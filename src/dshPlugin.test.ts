@@ -23,6 +23,59 @@ describe('dsh plugin bundle', () => {
     expect(fetch).toEqual(FETCH_RESULT_SCHEMA);
   });
 
+  it('keeps every shipped output schema inside the host keyword subset', () => {
+    // dsh validates a tool schema when the tool registers, and registration
+    // runs inside the plugin's apply(). A rejected keyword therefore does not
+    // merely disable one tool: the throw unwinds apply() and the whole plugin
+    // is dropped, taking web_search's provider with it. That is exactly what a
+    // `$schema` line did on 2026-10-24 — an editor nicety cost the search tool.
+    const SUBSET = new Set([
+      'type',
+      'oneOf',
+      'properties',
+      'required',
+      'additionalProperties',
+      'items',
+      'enum',
+      'const',
+      'title',
+      'description',
+      'default',
+      'examples',
+      'deprecated',
+      'readOnly',
+      'writeOnly',
+    ]);
+
+    function unsupported(node: unknown, at: string): string[] {
+      if (node === null || typeof node !== 'object') {
+        return [];
+      }
+      const record = node as Record<string, unknown>;
+      const own = Object.keys(record)
+        .filter((key) => !SUBSET.has(key))
+        .map((key) => `${at}.${key}`);
+      const nested = record.oneOf as unknown[] | undefined;
+      return [
+        ...own,
+        ...unsupported(record.items, `${at}.items`),
+        ...(Array.isArray(nested)
+          ? nested.flatMap((child, index) => unsupported(child, `${at}.oneOf[${index}]`))
+          : []),
+        ...Object.entries((record.properties as Record<string, unknown>) ?? {}).flatMap(
+          ([key, child]) => unsupported(child, `${at}.properties.${key}`),
+        ),
+      ];
+    }
+
+    for (const name of ['search', 'fetch', 'images']) {
+      const schema = JSON.parse(
+        fs.readFileSync(new URL(`../dsh/${name}-schema.json`, import.meta.url), 'utf-8'),
+      );
+      expect({ name, unsupported: unsupported(schema, '$') }).toEqual({ name, unsupported: [] });
+    }
+  });
+
   it('wires the bundle manifest to the patch and the patch to the plugin', () => {
     const pkg = JSON.parse(
       fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
