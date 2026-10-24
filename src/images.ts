@@ -1,5 +1,5 @@
-import { allowsPrivateNetwork, loadConfigFile, type ModsearchConfig } from './config.ts';
-import { runFetch, type FetchResult } from './providers/httpFetch.ts';
+import { loadConfigFile, type ModsearchConfig } from './config.ts';
+import { requestText } from './util/timedRequest.ts';
 
 /**
  * Image search is a fourth capability next to web search, page fetch, and X:
@@ -9,10 +9,16 @@ import { runFetch, type FetchResult } from './providers/httpFetch.ts';
  * talks to.
  *
  * The engine stays external on purpose. SearXNG already aggregates the image
- * backends (bing, duckduckgo, flickr, wikicommons, ...) and keeps their keys
- * and quotas; modsearch only normalizes the answer. There is no keyless
- * default: an image search needs an instance the user actually runs, so the
- * base URL is required rather than guessed.
+ * backends (bing, duckduckgo, flickr, wikicommons, pexels, ...) and keeps
+ * their keys and quotas; modsearch only normalizes the answer. There is no
+ * keyless default: an image search needs an instance the user actually runs,
+ * so the base URL is required rather than guessed.
+ *
+ * The request is a plain `fetch` to the configured endpoint, like every other
+ * engine API (tavily, exa, firecrawl). The hardened fetcher and its
+ * `allowPrivateNetwork` policy belong to page fetching, where modsearch is
+ * asked to open an arbitrary URL the caller supplied; an engine endpoint is
+ * the operator's own choice, so a LAN instance needs no extra permission.
  */
 
 /** Where the searched instance lives when nothing names one. */
@@ -52,25 +58,22 @@ export interface ImageSearchOptions {
   maxResults?: number;
   /** Overrides config and environment for this run. */
   baseURL?: string;
-  allowPrivateNetwork?: boolean;
   timeoutMs?: number;
   config?: ModsearchConfig;
-  /** Injection seam for tests; production always uses the hardened fetcher. */
-  fetcher?: (options: {
-    url: string;
-    timeoutMs?: number;
-    maxBytes?: number;
-    maxChars?: number;
-    allowPrivateNetwork?: boolean;
-  }) => Promise<Pick<FetchResult, 'status' | 'statusText' | 'text' | 'finalUrl'>>;
+  /** Injection seam for tests; production always uses the real request. */
+  fetcher?: (url: string, timeoutMs: number) => Promise<SearchResponse>;
+}
+
+/** The part of an HTTP answer this module reads. */
+export interface SearchResponse {
+  status: number;
+  statusText: string;
+  text: string;
 }
 
 const DEFAULT_MAX_RESULTS = 8;
 const MAX_RESULTS_CAP = 50;
 const DEFAULT_TIMEOUT_MS = 20_000;
-/** A 20-hit image payload is bulky; the page fetcher's page-sized caps are too small. */
-const MAX_BYTES = 4_000_000;
-const MAX_CHARS = 1_000_000;
 
 /**
  * Resolve the instance base URL from the flag, then config, then environment.
@@ -152,6 +155,19 @@ function clampMaxResults(value: number | undefined): number {
   return Math.min(Math.floor(value), MAX_RESULTS_CAP);
 }
 
+/**
+ * One GET to the instance under a single deadline, body included. An engine
+ * endpoint is the operator's own configuration, so this is a plain request:
+ * no proxy pinning, no private-range refusal, no CA merging.
+ */
+async function fetchJson(url: string, timeoutMs: number): Promise<SearchResponse> {
+  const signal = AbortSignal.timeout(timeoutMs);
+  const { response, text } = await requestText('searxng', url, { method: 'GET' }, signal, timeoutMs, [
+    url,
+  ]);
+  return { status: response.status, statusText: response.statusText, text };
+}
+
 function toImageResult(entry: unknown): ImageResult | undefined {
   if (typeof entry !== 'object' || entry === null) {
     return undefined;
@@ -195,17 +211,11 @@ export async function searchImages(options: ImageSearchOptions): Promise<ImageSe
   const config = options.config ?? loadConfigFile();
   const baseURL = resolveSearxngBaseURL(options.baseURL, config);
   const limit = clampMaxResults(options.maxResults);
-  const allowPrivate = options.allowPrivateNetwork ?? allowsPrivateNetwork(config);
-  const fetcher = options.fetcher ?? runFetch;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const fetcher = options.fetcher ?? fetchJson;
 
   const requestUrl = buildImageSearchUrl(baseURL, query);
-  const response = await fetcher({
-    url: requestUrl,
-    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    maxBytes: MAX_BYTES,
-    maxChars: MAX_CHARS,
-    allowPrivateNetwork: allowPrivate,
-  });
+  const response = await fetcher(requestUrl, timeoutMs);
 
   if (response.status < 200 || response.status >= 300) {
     throw new Error(

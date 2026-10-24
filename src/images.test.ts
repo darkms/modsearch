@@ -11,11 +11,10 @@ const BASE = 'https://searx.example';
 
 /** A fetcher that answers with a canned body, so no test touches the network. */
 function fetcherReturning(body: unknown, status = 200) {
-  return vi.fn(async (_options: { url: string; allowPrivateNetwork?: boolean }) => ({
+  return vi.fn(async (_url: string, _timeoutMs: number) => ({
     status,
     statusText: status === 200 ? 'OK' : 'Server Error',
     text: typeof body === 'string' ? body : JSON.stringify(body),
-    finalUrl: `${BASE}/search`,
   }));
 }
 
@@ -167,24 +166,27 @@ describe('searchImages', () => {
     expect(result.warnings[0]).toMatch(/no usable image results/i);
   });
 
-  it('passes the private-network policy through to the fetcher', async () => {
-    const fetcher = fetcherReturning({ results: [hit()] });
-    await searchImages({ query: 'cat', config, fetcher, allowPrivateNetwork: true });
-    expect(fetcher.mock.calls[0][0]).toMatchObject({ allowPrivateNetwork: true });
-
-    const second = fetcherReturning({ results: [hit()] });
-    await searchImages({ query: 'cat', config, fetcher: second });
-    expect(second.mock.calls[0][0]).toMatchObject({ allowPrivateNetwork: false });
-  });
-
-  it('takes the policy from config when the flag is absent', async () => {
+  it('requests the instance directly, with no private-network policy in the way', async () => {
+    // An engine endpoint is the operator's own configuration, like firecrawl's
+    // baseURL. The SSRF policy guards page fetching, where the URL comes from
+    // the caller, so a LAN instance must work with the flag left at its default.
     const fetcher = fetcherReturning({ results: [hit()] });
     await searchImages({
       query: 'cat',
-      config: { ...config, allowPrivateNetwork: true },
+      config: { ...config, allowPrivateNetwork: false },
       fetcher,
     });
-    expect(fetcher.mock.calls[0][0]).toMatchObject({ allowPrivateNetwork: true });
+
+    const [url, timeoutMs] = fetcher.mock.calls[0];
+    expect(url).toContain('categories=images');
+    expect(timeoutMs).toBe(20_000);
+    expect(fetcher.mock.calls[0]).toHaveLength(2);
+  });
+
+  it('passes a caller-supplied timeout through', async () => {
+    const fetcher = fetcherReturning({ results: [hit()] });
+    await searchImages({ query: 'cat', config, fetcher, timeoutMs: 5_000 });
+    expect(fetcher.mock.calls[0][1]).toBe(5_000);
   });
 
   it('throws with the instance name on a non-2xx answer', async () => {

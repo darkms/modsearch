@@ -63,7 +63,7 @@ The plugin then exposes:
 | Web search | Built-in `web_search` | Runs the ModSearch web engine chain and keeps native citation cards. |
 | X search | Added `x_search` tool | Uses Grok Build when available. A web substitute is labeled degraded. |
 | Focused page read | Added `read_page` tool | Reads one URL, optionally focused by a question. Private-network targets stay blocked. |
-| Image search | Added `image_search` tool | Queries a self-hosted SearXNG instance's `images` category and normalizes the hits: absolute image URL, source page, size, backend. Needs `engines.searxng.baseURL`; a LAN instance also needs `allowPrivateNetwork: true`. |
+| Image search | Added `image_search` tool | Queries a self-hosted SearXNG instance's `images` category and normalizes the hits: absolute image URL, source page, size, backend. Needs `engines.searxng.baseURL`. A LAN instance needs no extra switch: the request goes to your own configured endpoint, not to a caller-supplied URL. |
 
 ## Image search
 
@@ -74,7 +74,9 @@ modsearch config set engines.searxng.baseURL https://searx.example.com
 modsearch images -q "cute cat" --max-results 5
 ```
 
-In dsh the same capability is the `image_search` tool. An instance on the LAN or behind a VPN additionally needs the private-network switch (`allowPrivateNetwork: true` in the config, or `--allow-private-network` for one run); without it the request is refused before it leaves the machine.
+In dsh the same capability is the `image_search` tool.
+
+The request is a plain `fetch` to the endpoint you configured, the same way the Tavily, Exa, and Firecrawl engines reach theirs. So an instance on the LAN or behind a VPN works with no extra switch. `allowPrivateNetwork` stays what it always was: the permission page fetching needs before it opens a URL the *caller* supplied.
 
 ## Configure search engines
 

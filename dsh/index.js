@@ -323,15 +323,15 @@ function registerReadPageTool(ctx) {
  * which owns the image backends and their keys.
  *
  * Configuration lives in ~/.modsearch/config.json under
- * `engines.searxng.baseURL`, exactly like every other engine's endpoint, and
- * the CLI's own network policy applies: a LAN instance needs
- * `allowPrivateNetwork: true` there (or --allow-private-network).
+ * `engines.searxng.baseURL`, exactly like every other engine's endpoint. The
+ * request is a plain fetch, so an instance on the LAN needs no private-network
+ * switch: that policy guards page fetching, where the caller supplies the URL.
  */
 function registerImageSearchTool(ctx) {
   ctx.tools.register({
     name: 'image_search',
     description:
-      'Search images through the user\'s SearXNG instance. Use whenever a request needs pictures rather than documents: "show me photos of X", illustrations, product shots, reference imagery. Returns a list of hits, each with an absolute imageUrl (hotlink or download it), the pageUrl it came from, optional size and source host, plus a warnings list. Needs engines.searxng.baseURL in ~/.modsearch/config.json; a LAN instance also needs allowPrivateNetwork: true.',
+      'Search images through the user\'s SearXNG instance. Use whenever a request needs pictures rather than documents: "show me photos of X", illustrations, product shots, reference imagery. Returns a list of hits, each with an absolute imageUrl (hotlink or download it), the pageUrl it came from, optional size and source host, plus a warnings list. Needs engines.searxng.baseURL in ~/.modsearch/config.json.',
     parameters: {
       type: 'object',
       properties: {

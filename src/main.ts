@@ -156,10 +156,6 @@ program
   .option('--max-results <n>', 'Maximum number of images', '8')
   .option('--timeout <ms>', 'Timeout in milliseconds', '20000')
   .option('--base-url <url>', 'SearXNG instance for this run, overriding config')
-  .option(
-    '--allow-private-network',
-    'Allow reserved address ranges, for an instance on the LAN or behind a VPN',
-  )
   .action(async (options) => {
     let exitCode = 0;
     try {
@@ -177,7 +173,6 @@ program
         maxResults,
         baseURL: options.baseUrl,
         timeoutMs,
-        allowPrivateNetwork: options.allowPrivateNetwork,
       });
 
       const output = JSON.stringify(result, null, 2);
