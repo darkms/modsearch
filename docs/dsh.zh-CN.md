@@ -3,7 +3,7 @@ summary: 'DeepSeek Harness 插件：安装、配置、验证、更新与故障�
 read_when:
   - 在 dsh profile 中安装或更新 modsearch
   - 配置 dsh 插件开关或 modsearch 引擎
-  - 验证 dsh 中的 web_search、x_search 或 read_page
+  - 验证 dsh 中的 web_search、x_search、read_page 或 image_search
   - dsh 发布新版本后检查兼容性
 ---
 
@@ -63,6 +63,20 @@ bundle 贡献两条 patch：
 | 网页搜索 | 内置 `web_search` | 运行 ModSearch 网页引擎链，保留原生引用卡片。 |
 | X 搜索 | 新增 `x_search` 工具 | 有 Grok Build 时直接使用。网页替代结果会明确标成降级。 |
 | 带焦点读单页 | 新增 `read_page` 工具 | 读取一个 URL，可附问题聚焦。私网目标仍会拦截。 |
+| 图片搜索 | 新增 `image_search` 工具 | 查询自建 SearXNG 实例的 `images` 分类并归一化结果：绝对图片地址、来源页面、尺寸、后端。需要 `engines.searxng.baseURL`。局域网实例不需要额外开关：请求发往你自己配置的接口，而不是调用方给的 URL。 |
+
+## 图片搜索
+
+网页引擎返回的是文档，所以图片得有自己的后端：一个你自己运行的 SearXNG 实例。它聚合各家图片后端，并替你保管它们的 key 和额度。配置一次：
+
+```sh
+modsearch config set engines.searxng.baseURL https://searx.example.com
+modsearch images -q "cute cat" --max-results 5
+```
+
+在 dsh 里，同一个能力就是 `image_search` 工具。
+
+请求是一次普通的 `fetch`，直接发到你配置的接口，和 Tavily、Exa、Firecrawl 访问各自接口的方式一样。所以局域网或 VPN 后面的实例不需要任何额外开关。`allowPrivateNetwork` 保持它原本的含义：抓取页面时，打开**调用方**给的 URL 之前需要的那份许可。
 
 ## 配置搜索引擎
 

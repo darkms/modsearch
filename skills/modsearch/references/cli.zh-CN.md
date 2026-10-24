@@ -12,6 +12,7 @@ skill 通过启动器驱动这个 CLI。这一页讲的是直接运行它。
 modsearch -q "current Node.js LTS version"     # 搜网页
 modsearch -u "https://nodejs.org/en/about"     # 读一个页面，加 -q 指定关注点
 modsearch -q "reactions on X" --source x       # 搜 X，关于 X 的查询会自动路由过去
+modsearch images -q "cute cat"                 # 找图片，需要自建 SearXNG 实例
 ```
 
 输出永远是一个 `results` 数组，每个语料一条：
@@ -53,6 +54,17 @@ modsearch -q "reactions on X" --source x       # 搜 X，关于 X 的查询会�
 配置是可选的。`~/.modsearch/config.json` 可以指定首选引擎（`modsearch config set engine tavily`，空表示自动），也可以把单个引擎排除在自动故障转移之外（`modsearch config set tavily.enabled false`）。没有覆盖时每个引擎都参与。额度冷却故障转移默认开，`modsearch config set cooldown off` 关掉，`modsearch state clear` 重置冷却记录。完整的文件结构和每个字段，包括顶层的 `allowPrivateNetwork` 开关，见[配置文档](configure.zh-CN.md)。
 
 `modsearch doctor` 打印本机诊断：Node 版本、每项任务的引擎就绪状态与启用状态、每个配置值的来源、私有网络设置、当前在冷却的引擎。就绪与启用分开报告。它不花额度、不发网络请求，`--json` 让输出可被程序读取。路由行为不符合预期时先跑它。
+
+## 图片搜索
+
+`modsearch images` 是一个独立的子命令，不是 `-s` 的语料之一：网页引擎返回的是文档，没有任何图片索引会以模型能用的形状回来。它查询 SearXNG 实例的 `images` 分类，并把每条结果归一化成一个绝对图片地址，加上来源页面、尺寸和后端：
+
+```bash
+modsearch config set engines.searxng.baseURL https://searx.example.com
+modsearch images -q "cute cat" --max-results 5
+```
+
+没有免密默认值：图片搜索需要一个你自己运行的实例，所以 base URL 是必填的（`engines.searxng.baseURL`，或环境变量 `SEARXNG_BASE_URL`）。请求和你配置的其他引擎接口一样，直接发往那个地址，所以局域网或 VPN 后面的实例不需要任何私网开关。
 
 ## 平台支持
 

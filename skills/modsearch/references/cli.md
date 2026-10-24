@@ -12,6 +12,7 @@ With the skill installed you do not type commands: ask anything that needs check
 modsearch -q "current Node.js LTS version"     # search the web
 modsearch -u "https://nodejs.org/en/about"     # read one page, add -q for a focus
 modsearch -q "reactions on X" --source x       # search X, automatic for queries about X
+modsearch images -q "cute cat"                 # find pictures, needs a SearXNG instance
 ```
 
 Output is always a `results` array, one entry per corpus:
@@ -53,6 +54,17 @@ Output is always a `results` array, one entry per corpus:
 Configuration is optional. `~/.modsearch/config.json` can name a preferred engine (`modsearch config set engine tavily`, empty means automatic) and exclude individual engines from automatic failover (`modsearch config set tavily.enabled false`). Every engine participates when no override exists. Quota cooldown failover is on by default, `modsearch config set cooldown off` disables it, and `modsearch state clear` resets the cooldown records. The full file structure and every field, including the top-level `allowPrivateNetwork` switch, are documented in the [configuration doc](configure.md).
 
 `modsearch doctor` prints a local diagnosis: Node version, each task's engines with readiness and enabled state kept separate, where each config value comes from, the private-network setting, and any engines currently cooling. It spends no quota and makes no network request, and `--json` makes the output machine-readable. Run it first when routing does not behave as expected.
+
+## Image search
+
+`modsearch images` is its own subcommand, not a `-s` corpus: the web engines answer with documents, and no image index comes back in a shape a model can use. It queries a SearXNG instance's `images` category and normalizes each hit to an absolute image URL plus its source page, size, and backend:
+
+```bash
+modsearch config set engines.searxng.baseURL https://searx.example.com
+modsearch images -q "cute cat" --max-results 5
+```
+
+There is no keyless default: an image search needs an instance you actually run, so the base URL is required (`engines.searxng.baseURL`, or the `SEARXNG_BASE_URL` environment variable). The request goes to that configured endpoint like every other engine's, so an instance on the LAN or behind a VPN needs no private-network switch.
 
 ## Platform support
 

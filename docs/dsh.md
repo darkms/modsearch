@@ -3,7 +3,7 @@ summary: 'DeepSeek Harness plugin: install, configure, verify, update, and troub
 read_when:
   - Installing or updating modsearch in a dsh profile
   - Configuring the dsh plugin switches or modsearch engines
-  - Verifying web_search, x_search, or read_page in dsh
+  - Verifying web_search, x_search, read_page, or image_search in dsh
   - Checking compatibility after a dsh release
 ---
 
