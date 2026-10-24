@@ -38,6 +38,9 @@ const SEARCH_OUTPUT_SCHEMA = JSON.parse(
 const FETCH_OUTPUT_SCHEMA = JSON.parse(
   readFileSync(new URL('./fetch-schema.json', import.meta.url), 'utf8'),
 );
+const IMAGES_OUTPUT_SCHEMA = JSON.parse(
+  readFileSync(new URL('./images-schema.json', import.meta.url), 'utf8'),
+);
 
 // The CLI's --timeout is per engine, and a failed engine hands over to the
 // next with a fresh budget, so each path also passes --deadline: the whole
@@ -72,6 +75,13 @@ export function apply(ctx, config = {}) {
   }
   if (config.readPage !== false) {
     registerReadPageTool(ctx);
+  }
+  // Image search is the fourth corpus: the web engines return documents, so an
+  // image question had no tool at all and the model ended up scraping a search
+  // engine's JSON endpoint with read_page. A SearXNG-backed tool answers it in
+  // one structured call instead.
+  if (config.imageSearch !== false) {
+    registerImageSearchTool(ctx);
   }
   // The settings card. dsh web users have no terminal, so `modsearch config
   // set` is out of reach there and an engine key had no way in. The card the
@@ -304,6 +314,97 @@ function registerReadPageTool(ctx) {
   });
 }
 
+/**
+ * Image search: a fourth corpus next to web, X, and page reading. The web
+ * engines answer with documents, so an image request had no tool of its own
+ * and the model was left reading a search engine's JSON endpoint through
+ * read_page. This tool returns normalized image hits (absolute image URL,
+ * the page it came from, size, backend) from a self-hosted SearXNG instance,
+ * which owns the image backends and their keys.
+ *
+ * Configuration lives in ~/.modsearch/config.json under
+ * `engines.searxng.baseURL`, exactly like every other engine's endpoint, and
+ * the CLI's own network policy applies: a LAN instance needs
+ * `allowPrivateNetwork: true` there (or --allow-private-network).
+ */
+function registerImageSearchTool(ctx) {
+  ctx.tools.register({
+    name: 'image_search',
+    description:
+      'Search images through the user\'s SearXNG instance. Use whenever a request needs pictures rather than documents: "show me photos of X", illustrations, product shots, reference imagery. Returns a list of hits, each with an absolute imageUrl (hotlink or download it), the pageUrl it came from, optional size and source host, plus a warnings list. Needs engines.searxng.baseURL in ~/.modsearch/config.json; a LAN instance also needs allowPrivateNetwork: true.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'What to look for, in plain words (e.g. "cute cat portrait")',
+        },
+        max_results: {
+          type: 'number',
+          description: 'Maximum number of images to return (default 8, capped at 50)',
+        },
+      },
+      required: ['query'],
+    },
+    output: {
+      schema: IMAGES_OUTPUT_SCHEMA,
+      render: (_args, value) => [{ type: 'text', text: renderImageEvidence(value) }],
+    },
+    timeoutMs: OWN_TOOL_BACKSTOP_MS,
+    isConcurrencySafe: () => true,
+    presentCall: (args) => ({
+      card: 'generic',
+      title: 'image_search',
+      kind: 'search',
+      rawInput: args,
+    }),
+    async execute(args, exec) {
+      if (typeof args?.query !== 'string' || args.query.trim() === '') {
+        throw new Error('image_search needs a non-empty string "query".');
+      }
+      const cliArgs = [
+        'images',
+        '-q',
+        args.query,
+        '--timeout',
+        String(OWN_TOOL_ENGINE_TIMEOUT_MS),
+      ];
+      if (typeof args.max_results === 'number' && args.max_results > 0) {
+        cliArgs.push('--max-results', String(Math.floor(args.max_results)));
+      }
+      const entry = await runCli(cliArgs, exec.signal, { raw: true });
+      return {
+        query: typeof entry.query === 'string' ? entry.query : args.query,
+        engine: typeof entry.engine === 'string' ? entry.engine : 'searxng',
+        baseURL: typeof entry.baseURL === 'string' ? entry.baseURL : '',
+        count: Array.isArray(entry.images) ? entry.images.length : 0,
+        images: Array.isArray(entry.images) ? entry.images : [],
+        warnings: Array.isArray(entry.warnings) ? entry.warnings : [],
+      };
+    },
+  });
+}
+
+/** Human-readable projection of an image envelope: one line per hit. */
+function renderImageEvidence(value) {
+  if (!value || !Array.isArray(value.images)) {
+    return 'No image results.';
+  }
+  const lines = [`${value.count} image result(s) for "${value.query}" via ${value.engine}.`];
+  for (const image of value.images) {
+    const size = image.width && image.height ? ` (${image.width}x${image.height})` : '';
+    const source = image.source ? ` — ${image.source}` : '';
+    lines.push(`- ${image.title || '(untitled)'}${size}${source}: ${image.imageUrl}`);
+    if (image.pageUrl) {
+      lines.push(`  page: ${image.pageUrl}`);
+    }
+  }
+  for (const warning of Array.isArray(value.warnings) ? value.warnings : []) {
+    lines.push(`Warning: ${warning}`);
+  }
+  return lines.join('\n');
+}
+
 /** The CLI budget flags for the plugin's own tools. */
 function ownToolBudget() {
   return [
@@ -345,7 +446,7 @@ function cliPath() {
   return cli;
 }
 
-async function runCli(args, signal) {
+async function runCli(args, signal, options = {}) {
   const cli = cliPath();
   const { stdout, stderr, code } = await run(process.execPath, [cli, ...args], signal, childEnv());
   if (code !== 0) {
@@ -356,6 +457,11 @@ async function runCli(args, signal) {
     parsed = JSON.parse(stdout);
   } catch {
     throw new Error(`modsearch produced no JSON: ${stdout.trim().slice(0, 300)}`);
+  }
+  // `images` answers with its own envelope instead of a source list, so that
+  // command unwraps nothing: the caller asked for the document as printed.
+  if (options.raw === true) {
+    return parsed;
   }
   const entry = Array.isArray(parsed.results) ? parsed.results[0] : undefined;
   if (!entry || typeof entry.summary !== 'string') {

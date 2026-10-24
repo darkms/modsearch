@@ -14,6 +14,7 @@ import {
 } from './config.ts';
 import { buildCooldownController, clearAllCooldowns, currentStatePath } from './cooldown.ts';
 import { formatDoctorReport, runDoctor } from './doctor.ts';
+import { searchImages } from './images.ts';
 import { findEngine, listEngines } from './providers/index.ts';
 import { runSearch } from './search.ts';
 import { waitForPendingKills } from './subprocess.ts';
@@ -140,6 +141,59 @@ program
     // libuv assertion after the result was already written (#38). Work the
     // run abandoned at its deadline (a DNS lookup the resolver has not
     // answered) can still hold the loop, so an unref'd backstop ends it.
+    await waitForPendingKills();
+    process.exitCode = exitCode;
+    setTimeout(() => process.exit(exitCode), EXIT_BACKSTOP_MS).unref();
+  });
+
+program
+  .command('images')
+  .description(
+    'Search images through a self-hosted SearXNG instance (set engines.searxng.baseURL first)',
+  )
+  .requiredOption('-q, --query <text>', 'What to look for, in plain words')
+  .option('-o, --output <path>', 'Write result JSON to a file')
+  .option('--max-results <n>', 'Maximum number of images', '8')
+  .option('--timeout <ms>', 'Timeout in milliseconds', '20000')
+  .option('--base-url <url>', 'SearXNG instance for this run, overriding config')
+  .option(
+    '--allow-private-network',
+    'Allow reserved address ranges, for an instance on the LAN or behind a VPN',
+  )
+  .action(async (options) => {
+    let exitCode = 0;
+    try {
+      const maxResults = Number.parseInt(options.maxResults, 10);
+      if (!Number.isFinite(maxResults) || maxResults <= 0) {
+        throw new Error('Invalid --max-results. Use a positive integer.');
+      }
+      const timeoutMs = Number.parseInt(options.timeout, 10);
+      if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+        throw new Error('Invalid --timeout. Use a positive integer in milliseconds.');
+      }
+
+      const result = await searchImages({
+        query: options.query,
+        maxResults,
+        baseURL: options.baseUrl,
+        timeoutMs,
+        allowPrivateNetwork: options.allowPrivateNetwork,
+      });
+
+      const output = JSON.stringify(result, null, 2);
+      if (options.output) {
+        const outputPath = path.resolve(options.output);
+        fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+        fs.writeFileSync(outputPath, output, 'utf-8');
+      }
+      await writeFully(process.stdout, `${output}\n`);
+    } catch (error) {
+      await writeFully(
+        process.stderr,
+        `Error: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      exitCode = 1;
+    }
     await waitForPendingKills();
     process.exitCode = exitCode;
     setTimeout(() => process.exit(exitCode), EXIT_BACKSTOP_MS).unref();

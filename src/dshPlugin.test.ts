@@ -534,6 +534,77 @@ async function withConfig(
   }
 }
 
+describe('dsh image_search tool', () => {
+  const images = [
+    {
+      title: 'A cat',
+      imageUrl: 'https://cdn.example/cat.jpg',
+      pageUrl: 'https://page.example/cat',
+      source: 'page.example',
+      width: 800,
+      height: 600,
+    },
+  ];
+
+  it('returns the normalized envelope and renders one line per image', async () => {
+    const { tools } = await load();
+    const tool = toolNamed(tools, 'image_search');
+    fakeCli(`console.log(JSON.stringify(${JSON.stringify({
+      query: 'cat',
+      engine: 'searxng',
+      baseURL: 'https://searx.example',
+      count: 1,
+      images,
+      warnings: [],
+    })}))`);
+
+    const value = await tool.execute({ query: 'cat' }, {});
+    expect(value).toMatchObject({ query: 'cat', engine: 'searxng', count: 1 });
+
+    const [block] = tool.output.render({}, value as never);
+    expect(block.text).toContain('1 image result(s) for "cat"');
+    expect(block.text).toContain('https://cdn.example/cat.jpg');
+    expect(block.text).toContain('(800x600)');
+  });
+
+  it('spawns the images subcommand with the query and the requested limit', async () => {
+    const { tools } = await load();
+    const tool = toolNamed(tools, 'image_search');
+    // The fake CLI echoes its own argv back in the query field.
+    fakeCli(
+      'console.log(JSON.stringify({ query: JSON.stringify(process.argv.slice(2)), ' +
+        "engine: 'searxng', count: 0, images: [], warnings: [] }))",
+    );
+
+    const value = await tool.execute({ query: 'cute cat', max_results: 4 }, {});
+    const argv = JSON.parse(String(value.query)) as string[];
+    expect(argv[0]).toBe('images');
+    expect(flag(argv, '-q')).toBe('cute cat');
+    expect(flag(argv, '--max-results')).toBe('4');
+  });
+
+  it('refuses an empty query before spawning the CLI', async () => {
+    const { tools } = await load();
+    const tool = toolNamed(tools, 'image_search');
+    await expect(tool.execute({ query: '   ' }, {})).rejects.toThrow(/non-empty string "query"/);
+  });
+
+  it('surfaces the CLI diagnostic when the instance is not configured', async () => {
+    const { tools } = await load();
+    const tool = toolNamed(tools, 'image_search');
+    fakeCli(
+      "console.error('Error: Image search needs a SearXNG instance: set engines.searxng.baseURL'); " +
+        'process.exit(1)',
+    );
+    await expect(tool.execute({ query: 'cat' }, {})).rejects.toThrow(/engines\.searxng\.baseURL/);
+  });
+
+  it('is switched off by its own config flag', async () => {
+    const { tools } = await load({ imageSearch: false });
+    expect(tools.has('image_search')).toBe(false);
+  });
+});
+
 describe('dsh settings card route', () => {
   // The card is the browser half; this covers the host half it talks to,
   // where the API keys live. Every assertion here is about a key not leaving,
@@ -1019,7 +1090,7 @@ describe('dsh settings card route', () => {
       plugin.apply(stage.ctx as never, {});
       expect(stage.injected).toContainEqual(['settings']);
       expect(stage.routes['modsearch-config']).toBeDefined();
-      expect([...stage.tools.keys()].sort()).toEqual(['read_page', 'x_search']);
+      expect([...stage.tools.keys()].sort()).toEqual(['image_search', 'read_page', 'x_search']);
       expect(stage.providers).toHaveLength(1);
       expect(errors).not.toHaveBeenCalled();
     } finally {
@@ -1039,7 +1110,7 @@ describe('dsh settings card route', () => {
     expect(stage.injected).toContainEqual(['settings']);
     expect(stage.namespaces).toEqual([]);
     expect(stage.routes['modsearch-config']).toBeDefined();
-    expect([...stage.tools.keys()].sort()).toEqual(['read_page', 'x_search']);
+    expect([...stage.tools.keys()].sort()).toEqual(['image_search', 'read_page', 'x_search']);
     expect(stage.providers).toHaveLength(1);
   });
 
@@ -1086,6 +1157,7 @@ describe('dsh plugin config switches', () => {
       searchProvider: false,
       xSearch: false,
       readPage: false,
+      imageSearch: false,
     });
     expect(tools.size).toBe(0);
     expect(providers).toHaveLength(0);
@@ -1108,7 +1180,7 @@ describe('dsh plugin config switches', () => {
       } as never,
       {},
     );
-    expect([...tools.keys()].sort()).toEqual(['read_page', 'x_search']);
+    expect([...tools.keys()].sort()).toEqual(['image_search', 'read_page', 'x_search']);
   });
 
   it('keeps search, x_search and read_page on a host with no scoped injects at all', async () => {
@@ -1116,7 +1188,7 @@ describe('dsh plugin config switches', () => {
     // have no ctx.inject to hang them on. The settings card is the only thing
     // that may go missing there.
     const { tools, providers } = await load();
-    expect([...tools.keys()].sort()).toEqual(['read_page', 'x_search']);
+    expect([...tools.keys()].sort()).toEqual(['image_search', 'read_page', 'x_search']);
     expect(providers).toHaveLength(1);
   });
 });

@@ -23,7 +23,7 @@ The whole install is four steps:
 dsh already has a native `web_search` tool, wired to its own default search
 provider. A skill cannot replace that tool, so a modsearch skill in dsh mostly
 goes unused. The plugin does replace it: it points `web_search` at the
-modsearch engine chain and adds `x_search` and `read_page`. In dsh, install the
+modsearch engine chain and adds `x_search`, `read_page`, and `image_search`. In dsh, install the
 plugin and skip Steps 1 to 4. Do not also install the skill.
 
 You are in dsh if `echo $DSH_SHELL` prints `1`. dsh sets it in every shell call,

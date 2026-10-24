@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "query": { "type": "string" },
+    "engine": { "type": "string" },
+    "baseURL": { "type": "string" },
+    "count": { "type": "number" },
+    "images": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "imageUrl": { "type": "string" },
+          "thumbnailUrl": { "type": "string" },
+          "pageUrl": { "type": "string" },
+          "source": { "type": "string" },
+          "engine": { "type": "string" },
+          "width": { "type": "number" },
+          "height": { "type": "number" }
+        },
+        "required": ["title", "imageUrl"],
+        "additionalProperties": false
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["query", "engine", "count", "images", "warnings"],
+  "additionalProperties": false
+}

@@ -11,7 +11,7 @@ read_when:
 
 English | [简体中文](dsh.zh-CN.md)
 
-ModSearch is a native dsh bundle. It keeps dsh's built-in `web_search` tool and citation cards, replaces only the search provider behind them, and adds `x_search` plus `read_page` for capabilities the dsh web seam does not expose.
+ModSearch is a native dsh bundle. It keeps dsh's built-in `web_search` tool and citation cards, replaces only the search provider behind them, and adds `x_search`, `read_page`, and `image_search` for capabilities the dsh web seam does not expose.
 
 ## Compatibility
 
@@ -63,6 +63,18 @@ The plugin then exposes:
 | Web search | Built-in `web_search` | Runs the ModSearch web engine chain and keeps native citation cards. |
 | X search | Added `x_search` tool | Uses Grok Build when available. A web substitute is labeled degraded. |
 | Focused page read | Added `read_page` tool | Reads one URL, optionally focused by a question. Private-network targets stay blocked. |
+| Image search | Added `image_search` tool | Queries a self-hosted SearXNG instance's `images` category and normalizes the hits: absolute image URL, source page, size, backend. Needs `engines.searxng.baseURL`; a LAN instance also needs `allowPrivateNetwork: true`. |
+
+## Image search
+
+The web engines return documents, so images need their own backend: a SearXNG instance you run, which aggregates the image backends and owns their keys. Point modsearch at it once:
+
+```sh
+modsearch config set engines.searxng.baseURL https://searx.example.com
+modsearch images -q "cute cat" --max-results 5
+```
+
+In dsh the same capability is the `image_search` tool. An instance on the LAN or behind a VPN additionally needs the private-network switch (`allowPrivateNetwork: true` in the config, or `--allow-private-network` for one run); without it the request is refused before it leaves the machine.
 
 ## Configure search engines
 
